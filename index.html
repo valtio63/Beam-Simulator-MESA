@@ -4,15 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Electron Beam Calculator</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f4f4f4; }
+    input, button { margin: 0.5em 0; }
+    #output { margin-top: 1em; font-weight: bold; }
+  </style>
 </head>
 <body>
   <h1>Electron Beam Calculator</h1>
-  <p>This will be your online physics calculator based on the JavaScript version.</p>
+  <label>
+    Beam Energy (MeV):
+    <input id="energy" type="number" value="155" step="0.1">
+  </label><br>
+  <button onclick="calculate()">Calculate Rigidity</button>
+  <div id="output"></div>
 
-  <!-- Add your JavaScript code here -->
   <script>
-    // Example placeholder — replace this with your translated calculator logic
-    alert("Beam calculator ready to go!");
+    const electronMass = 0.510998;
+    const c = 2.99792458e8;
+
+    function magneticRigidity(T) {
+      return (T * 1e6) / c;
+    }
+
+    function calculate() {
+      const T = parseFloat(document.getElementById("energy").value);
+      const rigidity = magneticRigidity(T).toExponential(3);
+      document.getElementById("output").textContent =
+        `Magnetic Rigidity: ${rigidity} T·m`;
+    }
   </script>
 </body>
 </html>
