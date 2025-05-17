@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Electron Beam Simulator</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #f9f9f9; }
+    canvas { border: 1px solid #aaa; background: white; margin-top: 1em; }
+    label { margin: 0 1em; }
+    #controls { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Electron Beam Phase Space Simulator</h1>
+
+  <div id="controls">
+    <label>Solenoid Field Bs [T]
+      <input type="range" id="Bs" min="0.01" max="9.0" step="0.1" value="8">
+    </label>
+    <label>zVal (Scaling)
+      <input type="range" id="zVal" min="0" max="1" step="0.05" value="1">
+    </label>
+    <label>Drift Length Lc1 [m]
+      <input type="range" id="Lc1" min="0" max="2" step="0.01" value="0.75">
+    </label>
+  </div>
+
+  <canvas id="plot" width="600" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById("plot");
+    const ctx = canvas.getContext("2d");
+
+    const BsSlider = document.getElementById("Bs");
+    const zValSlider = document.getElementById("zVal");
+    const Lc1Slider = document.getElementById("Lc1");
+
+    const electronMass = 0.510998;
+    const speedOfLight = 2.99792458e8;
+
+    function gamma(T) {
+      return (T + electronMass) / electronMass;
+    }
+
+    function magneticRigidity(T) {
+      return (T * 1e6) / speedOfLight;
+    }
+
+    function solenoidMatrix(Bs, Ls, T) {
+      const k = Math.abs(Bs) / magneticRigidity(T);
+      const phi = k * Ls;
+      const f = Math.sin(phi) / k;
+      const g = (1 - Math.cos(phi)) / k;
+
+      return [
+        [Math.cos(phi), f, Math.sin(phi), g],
+        [-k * Math.sin(phi), Math.cos(phi), -k * g, Math.sin(phi)],
+        [-Math.sin(phi), -g, Math.cos(phi), f],
+        [k * g, -Math.sin(phi), -k * Math.sin(phi), Math.cos(phi)]
+      ];
+    }
+
+    function driftMatrix(Lc) {
+      return [
+        [1, Lc, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, Lc],
+        [0, 0, 0, 1]
+      ];
+    }
+
+    function dotMatrixVec(matrix, vec) {
+      return matrix.map(row => row.reduce((sum, val, i) => sum + val * vec[i], 0));
+    }
+
+    function mollerInitialConditions(T0, T1) {
+      const E0 = T0 + electronMass;
+      const E1 = T1 + electronMass;
+      const p0 = Math.sqrt(E0 ** 2 - electronMass ** 2);
+      const p1 = Math.sqrt(E1 ** 2 - electronMass ** 2);
+      const E2 = E0 + electronMass - E1;
+      const p2 = Math.sqrt(E2 ** 2 - electronMass ** 2);
+      const theta1 = Math.acos((p0 ** 2 + p1 ** 2 - p2 ** 2) / (2 * p0 * p1));
+      const phi = Math.random() * 2 * Math.PI;
+
+      return [
+        (Math.random() * 0.002 - 0.001),
+        theta1 * Math.cos(phi),
+        (Math.random() * 0.002 - 0.001),
+        theta1 * Math.sin(phi)
+      ];
+    }
+
+    function mottInitialConditions() {
+      const x = (Math.random() * 0.002 - 0.001);
+      const y = (Math.random() * 0.002 - 0.001);
+      const theta = Math.random() * 0.001;
+      const phi = Math.random() * 2 * Math.PI;
+      return [x, theta * Math.cos(phi), y, theta * Math.sin(phi)];
+    }
+
+    function transformPoints(Bs, zVal, Lc1) {
+      const moller = [];
+      const mott = [];
+      const xData = Array.from({ length: 100 }, (_, i) => 155 / 2 - 5 + (i * 10 / 99));
+
+      const Ls = 0.40607 * zVal;
+      for (const T of xData) {
+        const vec = mollerInitialConditions(155.0, T);
+        const m = solenoidMatrix(Bs, Ls, T);
+        const d = driftMatrix(Lc1);
+        const result = dotMatrixVec(d, dotMatrixVec(m, vec));
+        moller.push({ x: result[0], y: result[2], color: T });
+      }
+
+      for (let i = 0; i < 49; i++) {
+        const vec = mottInitialConditions();
+        const result = dotMatrixVec(driftMatrix(Lc1), dotMatrixVec(solenoidMatrix(Bs, Ls, 155.0), vec));
+        mott.push({ x: result[0], y: result[2] });
+      }
+
+      return { moller, mott };
+    }
+
+    function drawPlot() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const Bs = parseFloat(BsSlider.value);
+      const zVal = parseFloat(zValSlider.value);
+      const Lc1 = parseFloat(Lc1Slider.value);
+
+      const { moller, mott } = transformPoints(Bs, zVal, Lc1);
+
+      const scale = 5000;
+
+      for (const p of moller) {
+        const x = canvas.width / 2 + p.x * scale;
+        const y = canvas.height / 2 - p.y * scale;
+        ctx.fillStyle = `rgb(${Math.floor((p.color - 70) * 10)},0,${255 - Math.floor((p.color - 70) * 10)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      for (const p of mott) {
+        const x = canvas.width / 2 + p.x * scale;
+        const y = canvas.height / 2 - p.y * scale;
+        ctx.strokeStyle = "purple";
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+
+    BsSlider.oninput = drawPlot;
+    zValSlider.oninput = drawPlot;
+    Lc1Slider.oninput = drawPlot;
+
+    drawPlot();
+  </script>
+</body>
+</html>
